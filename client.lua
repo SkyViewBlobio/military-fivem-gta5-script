@@ -173,7 +173,7 @@ function CreateJuggernautPed(coords, weaponName)
 end
 
 -- Spawn vehicle with peds
-function SpawnVehicleWithPeds(vehicleModel, pedCount, weaponName, spawnDistance)
+function SpawnVehicleWithPeds(vehicleModel, pedCount, weapons, spawnDistance)
     if not RequestModelAsync(vehicleModel) then
         print("Failed to load vehicle model: " .. vehicleModel)
         return nil
@@ -209,8 +209,10 @@ function SpawnVehicleWithPeds(vehicleModel, pedCount, weaponName, spawnDistance)
     SetVehicleDoorsLocked(vehicle, 4)
     
     local peds = {}
+    local weaponList = type(weapons) == "table" and weapons or {weapons}
     
     -- Create driver
+    local weaponName = weaponList[1]
     local driver = CreateMilitaryPed(vector3(spawnX, spawnY, spawnZ), weaponName, relationshipGroup)
     if driver then
         TaskWarpPedIntoVehicle(driver, vehicle, -1)
@@ -220,6 +222,8 @@ function SpawnVehicleWithPeds(vehicleModel, pedCount, weaponName, spawnDistance)
     
     -- Create passengers
     for i = 0, pedCount - 2 do
+        local weaponIndex = ((i + 1) % #weaponList) + 1
+        weaponName = weaponList[weaponIndex]
         local passenger = CreateMilitaryPed(vector3(spawnX, spawnY, spawnZ), weaponName, relationshipGroup)
         if passenger then
             TaskWarpPedIntoVehicle(passenger, vehicle, i)
@@ -235,7 +239,7 @@ function SpawnLevel1()
     print("Spawning Level 1 units...")
     
     for i = 1, 4 do
-        local unit = SpawnVehicleWithPeds(Config.CRUSADER_MODEL, 2, "WEAPON_MUSKET", 150.0)
+        local unit = SpawnVehicleWithPeds(Config.CRUSADER_MODEL, 2, {"WEAPON_MUSKET", "WEAPON_MARKSMANRIFLE"}, 150.0)
         if unit then
             table.insert(unitTypes.level1_crusaders, {
                 vehicle = unit.vehicle,
@@ -618,7 +622,7 @@ Citizen.CreateThread(function()
                         -- Respawn
                         Citizen.CreateThread(function()
                             Citizen.Wait(Config.CLEANUP_TIME)
-                            local newUnit = SpawnVehicleWithPeds(Config.CRUSADER_MODEL, 2, "WEAPON_MUSKET", 150.0)
+                            local newUnit = SpawnVehicleWithPeds(Config.CRUSADER_MODEL, 2, {"WEAPON_MUSKET", "WEAPON_MARKSMANRIFLE"}, 150.0)
                             if newUnit then
                                 unitTypes.level1_crusaders[i] = {
                                     vehicle = newUnit.vehicle,
