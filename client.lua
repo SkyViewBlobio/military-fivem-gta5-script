@@ -20,6 +20,7 @@ local Config = {
     RHINO_SPAWN_DISTANCE = 1000.0,
     
     RESPAWN_CHECK_INTERVAL = 5000, -- Check every 5 seconds
+    LAZER_FALLBACK_FIRE_CHANCE = 0.3, -- 30% chance to use bullet fallback when vehicle weapons may not be working
 }
 
 -- Unit tracking structure
@@ -78,9 +79,9 @@ function RequestModelAsync(model)
 end
 
 -- Request weapon asset
-function RequestWeaponAsset(weaponHash)
+function RequestWeaponAssetSync(weaponHash)
     if not HasWeaponAssetLoaded(weaponHash) then
-        RequestWeaponAsset(weaponHash)
+        RequestWeaponAsset(weaponHash) -- Native function call
         local timeout = 0
         while not HasWeaponAssetLoaded(weaponHash) and timeout < 10000 do
             Citizen.Wait(100)
@@ -419,66 +420,74 @@ end
 function SpawnLevel4()
     print("Spawning Level 4 units...")
     
+    for i = 1, 2 do
+        SpawnSingleLazer()
+        Citizen.Wait(1000)
+    end
+end
+
+-- Spawn a single Lazer jet
+function SpawnSingleLazer()
     if not RequestModelAsync(Config.LAZER_MODEL) then
         print("Failed to load Lazer model")
-        return
+        return nil
     end
     
     if not RequestModelAsync(Config.CHEMSEC_MODEL) then
         print("Failed to load pilot model")
-        return
+        return nil
     end
     
     local playerPed = PlayerPedId()
     local playerCoords = GetEntityCoords(playerPed)
     
-    for i = 1, 2 do
-        -- Spawn in air
-        local angle = math.random() * 2 * math.pi
-        local spawnX = playerCoords.x + math.cos(angle) * 500.0
-        local spawnY = playerCoords.y + math.sin(angle) * 500.0
-        local spawnZ = playerCoords.z + 300.0
+    -- Spawn in air
+    local angle = math.random() * 2 * math.pi
+    local spawnX = playerCoords.x + math.cos(angle) * 500.0
+    local spawnY = playerCoords.y + math.sin(angle) * 500.0
+    local spawnZ = playerCoords.z + 300.0
+    
+    -- Create Lazer
+    local lazer = CreateVehicle(GetHashKey(Config.LAZER_MODEL), spawnX, spawnY, spawnZ, 0.0, true, true)
+    
+    if DoesEntityExist(lazer) then
+        SetEntityAsMissionEntity(lazer, true, true)
+        SetVehicleEngineOn(lazer, true, true, false)
         
-        -- Create Lazer
-        local lazer = CreateVehicle(GetHashKey(Config.LAZER_MODEL), spawnX, spawnY, spawnZ, 0.0, true, true)
+        -- Create pilot
+        local pilot = CreatePedInsideVehicle(lazer, 4, GetHashKey(Config.CHEMSEC_MODEL), -1, true, true)
         
-        if DoesEntityExist(lazer) then
-            SetEntityAsMissionEntity(lazer, true, true)
-            SetVehicleEngineOn(lazer, true, true, false)
+        if DoesEntityExist(pilot) then
+            SetPedRelationshipGroupHash(pilot, relationshipGroup)
             
-            -- Create pilot
-            local pilot = CreatePedInsideVehicle(lazer, 4, GetHashKey(Config.CHEMSEC_MODEL), -1, true, true)
+            -- Combat settings
+            SetBlockingOfNonTemporaryEvents(pilot, true)
+            SetPedCombatAttributes(pilot, 46, true)
+            SetPedAsEnemy(pilot, true)
+            SetPedCombatAbility(pilot, 100)
             
-            if DoesEntityExist(pilot) then
-                SetPedRelationshipGroupHash(pilot, relationshipGroup)
-                
-                -- Combat settings
-                SetBlockingOfNonTemporaryEvents(pilot, true)
-                SetPedCombatAttributes(pilot, 46, true)
-                SetPedAsEnemy(pilot, true)
-                SetPedCombatAbility(pilot, 100)
-                
-                -- Set plane weapon
-                SetCurrentPedVehicleWeapon(pilot, GetHashKey("VEHICLE_WEAPON_PLANE_ROCKET"))
-                
-                -- Store unit
-                local unitData = {
-                    vehicle = lazer,
-                    pilot = pilot,
-                    spawnTime = GetGameTimer(),
-                    markedForCleanup = false
-                }
-                table.insert(unitTypes.level4_lazers, unitData)
-                
-                -- Start jet AI thread
-                Citizen.CreateThread(function()
-                    LazerAILoop(unitData)
-                end)
-            end
+            -- Set plane weapon
+            SetCurrentPedVehicleWeapon(pilot, GetHashKey("VEHICLE_WEAPON_PLANE_ROCKET"))
+            
+            -- Store unit
+            local unitData = {
+                vehicle = lazer,
+                pilot = pilot,
+                spawnTime = GetGameTimer(),
+                markedForCleanup = false
+            }
+            table.insert(unitTypes.level4_lazers, unitData)
+            
+            -- Start jet AI thread
+            Citizen.CreateThread(function()
+                LazerAILoop(unitData)
+            end)
+            
+            return unitData
         end
-        
-        Citizen.Wait(1000)
     end
+    
+    return nil
 end
 
 -- Lazer AI Loop
@@ -536,7 +545,7 @@ function LazerAILoop(unitData)
             SetVehicleShootAtTarget(pilot, nearestTarget, targetCoords.x, targetCoords.y, targetCoords.z)
             
             -- Fallback: Use bullets if vehicle weapons fail
-            if math.random() < 0.3 then
+            if math.random() < Config.LAZER_FALLBACK_FIRE_CHANCE then
                 local lazerCoords = GetEntityCoords(vehicle)
                 ShootSingleBulletBetweenCoords(
                     lazerCoords.x, lazerCoords.y, lazerCoords.z,
@@ -596,8 +605,9 @@ Citizen.CreateThread(function()
         Citizen.Wait(Config.RESPAWN_CHECK_INTERVAL)
         
         if currentLevel >= 1 then
-            -- Check Level 1 Crusaders
-            for i, unit in ipairs(unitTypes.level1_crusaders) do
+            -- Check Level 1 Crusaders (iterate backwards to safely handle replacements)
+            for i = #unitTypes.level1_crusaders, 1, -1 do
+                local unit = unitTypes.level1_crusaders[i]
                 if not unit.markedForCleanup then
                     local shouldCleanup = false
                     
@@ -620,11 +630,12 @@ Citizen.CreateThread(function()
                     if shouldCleanup then
                         CleanupUnit(unit, false)
                         -- Respawn
+                        local index = i
                         Citizen.CreateThread(function()
                             Citizen.Wait(Config.CLEANUP_TIME)
                             local newUnit = SpawnVehicleWithPeds(Config.CRUSADER_MODEL, 2, {"WEAPON_MUSKET", "WEAPON_MARKSMANRIFLE"}, 150.0)
                             if newUnit then
-                                unitTypes.level1_crusaders[i] = {
+                                unitTypes.level1_crusaders[index] = {
                                     vehicle = newUnit.vehicle,
                                     peds = newUnit.peds,
                                     spawnTime = GetGameTimer(),
@@ -638,8 +649,9 @@ Citizen.CreateThread(function()
         end
         
         if currentLevel >= 2 then
-            -- Check Level 2 Barracks
-            for i, unit in ipairs(unitTypes.level2_barracks) do
+            -- Check Level 2 Barracks (iterate backwards)
+            for i = #unitTypes.level2_barracks, 1, -1 do
+                local unit = unitTypes.level2_barracks[i]
                 if not unit.markedForCleanup then
                     local shouldCleanup = false
                     
@@ -661,11 +673,12 @@ Citizen.CreateThread(function()
                     if shouldCleanup then
                         CleanupUnit(unit, false)
                         -- Respawn
+                        local index = i
                         Citizen.CreateThread(function()
                             Citizen.Wait(Config.CLEANUP_TIME)
                             local newUnit = SpawnVehicleWithPeds(Config.BARRACKS_MODEL, 4, "WEAPON_MUSKET", 150.0)
                             if newUnit then
-                                unitTypes.level2_barracks[i] = {
+                                unitTypes.level2_barracks[index] = {
                                     vehicle = newUnit.vehicle,
                                     peds = newUnit.peds,
                                     spawnTime = GetGameTimer(),
@@ -679,8 +692,9 @@ Citizen.CreateThread(function()
         end
         
         if currentLevel >= 3 then
-            -- Check Level 3 Rhino
-            for i, unit in ipairs(unitTypes.level3_rhino) do
+            -- Check Level 3 Rhino (iterate backwards)
+            for i = #unitTypes.level3_rhino, 1, -1 do
+                local unit = unitTypes.level3_rhino[i]
                 if not unit.markedForCleanup and not unit.isRespawning then
                     local shouldCleanup = false
                     
@@ -692,12 +706,17 @@ Citizen.CreateThread(function()
                     if shouldCleanup then
                         unit.isRespawning = true
                         CleanupUnit(unit, true)
-                        -- Respawn after 5 minutes
+                        -- Respawn after 5 minutes and remove old entry
                         Citizen.CreateThread(function()
                             Citizen.Wait(Config.RHINO_CLEANUP_TIME)
                             SpawnLevel3()
-                            -- Remove old entry
-                            table.remove(unitTypes.level3_rhino, i)
+                            -- Find and remove the old entry from the table
+                            for j = #unitTypes.level3_rhino, 1, -1 do
+                                if unitTypes.level3_rhino[j] == unit then
+                                    table.remove(unitTypes.level3_rhino, j)
+                                    break
+                                end
+                            end
                         end)
                     end
                 end
@@ -705,8 +724,9 @@ Citizen.CreateThread(function()
         end
         
         if currentLevel >= 4 then
-            -- Check Level 4 Lazers
-            for i, unit in ipairs(unitTypes.level4_lazers) do
+            -- Check Level 4 Lazers (iterate backwards)
+            for i = #unitTypes.level4_lazers, 1, -1 do
+                local unit = unitTypes.level4_lazers[i]
                 if not unit.markedForCleanup then
                     local shouldCleanup = false
                     
@@ -717,12 +737,17 @@ Citizen.CreateThread(function()
                     
                     if shouldCleanup then
                         CleanupUnit(unit, false)
-                        -- Respawn
+                        -- Respawn a single Lazer
                         Citizen.CreateThread(function()
                             Citizen.Wait(Config.CLEANUP_TIME)
-                            SpawnLevel4()
-                            -- Remove old entry to prevent duplicate
-                            table.remove(unitTypes.level4_lazers, i)
+                            SpawnSingleLazer()
+                            -- Remove old entry from table
+                            for j = #unitTypes.level4_lazers, 1, -1 do
+                                if unitTypes.level4_lazers[j] == unit then
+                                    table.remove(unitTypes.level4_lazers, j)
+                                    break
+                                end
+                            end
                         end)
                     end
                 end

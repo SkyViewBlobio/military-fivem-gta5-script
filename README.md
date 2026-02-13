@@ -4,7 +4,7 @@ A comprehensive level-based military wave system for FiveM servers running OneSy
 
 ## Features
 
-- **10-Level System**: Progressive difficulty with increasingly powerful enemy waves
+- **Level-Based System**: Progressive difficulty with increasingly powerful enemy waves (4 levels currently implemented, supports up to 10)
 - **Intelligent AI**: Enemy units actively hunt players and NPCs with advanced combat behavior
 - **Vehicle Combat**: Tanks and jets with functional weapons and chase AI
 - **Automatic Respawning**: Units respawn after being destroyed (1 minute for most, 5 minutes for tanks)
