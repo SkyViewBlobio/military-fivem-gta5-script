@@ -90,6 +90,25 @@ function RequestWeaponAssetSync(weaponHash)
     end
 end
 
+-- Create blip for vehicle
+function CreateVehicleBlip(vehicle, blipSprite, blipColor, blipName)
+    if not DoesEntityExist(vehicle) then
+        return nil
+    end
+    
+    local blip = AddBlipForEntity(vehicle)
+    if blip then
+        SetBlipSprite(blip, blipSprite)
+        SetBlipColour(blip, blipColor)
+        SetBlipAsShortRange(blip, false)
+        BeginTextCommandSetBlipName("STRING")
+        AddTextComponentString(blipName)
+        EndTextCommandSetBlipName(blip)
+    end
+    
+    return blip
+end
+
 -- Create ped with weapons and AI settings
 function CreateMilitaryPed(coords, weaponName, relationship)
     if not RequestModelAsync(Config.CHEMSEC_MODEL) then
@@ -242,9 +261,13 @@ function SpawnLevel1()
     for i = 1, 4 do
         local unit = SpawnVehicleWithPeds(Config.CRUSADER_MODEL, 2, {"WEAPON_MUSKET", "WEAPON_MARKSMANRIFLE"}, 150.0)
         if unit then
+            -- Create blip for the vehicle
+            local blip = CreateVehicleBlip(unit.vehicle, 225, 1, "Military Crusader")
+            
             table.insert(unitTypes.level1_crusaders, {
                 vehicle = unit.vehicle,
                 peds = unit.peds,
+                blip = blip,
                 spawnTime = GetGameTimer(),
                 markedForCleanup = false
             })
@@ -260,9 +283,13 @@ function SpawnLevel2()
     for i = 1, 2 do
         local unit = SpawnVehicleWithPeds(Config.BARRACKS_MODEL, 4, "WEAPON_MUSKET", 150.0)
         if unit then
+            -- Create blip for the vehicle
+            local blip = CreateVehicleBlip(unit.vehicle, 225, 1, "Military Barracks")
+            
             table.insert(unitTypes.level2_barracks, {
                 vehicle = unit.vehicle,
                 peds = unit.peds,
+                blip = blip,
                 spawnTime = GetGameTimer(),
                 markedForCleanup = false
             })
@@ -337,10 +364,14 @@ function SpawnLevel3()
         -- Set tank weapon
         SetCurrentPedVehicleWeapon(driver, GetHashKey("VEHICLE_WEAPON_TANK"))
         
+        -- Create blip for the tank
+        local blip = CreateVehicleBlip(rhino, 225, 1, "Military Rhino Tank")
+        
         -- Store unit
         local unitData = {
             vehicle = rhino,
             driver = driver,
+            blip = blip,
             spawnTime = GetGameTimer(),
             markedForCleanup = false,
             isRespawning = false
@@ -364,7 +395,7 @@ function RhinoAILoop(unitData)
             break
         end
         
-        -- Find nearest target (player or NPC)
+        -- Find nearest target (players only)
         local driverCoords = GetEntityCoords(driver)
         local nearestTarget = nil
         local nearestDist = 1000.0
@@ -380,24 +411,6 @@ function RhinoAILoop(unitData)
                 end
             end
         end
-        
-        -- Check nearby NPCs
-        local handle, ped = FindFirstPed()
-        local success = true
-        repeat
-            if DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) and ped ~= driver then
-                local pedGroup = GetPedRelationshipGroupHash(ped)
-                if pedGroup ~= relationshipGroup then -- Don't target own units
-                    local dist = #(driverCoords - GetEntityCoords(ped))
-                    if dist < nearestDist and dist < 500.0 then
-                        nearestTarget = ped
-                        nearestDist = dist
-                    end
-                end
-            end
-            success, ped = FindNextPed(handle)
-        until not success
-        EndFindPed(handle)
         
         -- Chase and shoot target
         if nearestTarget then
@@ -469,10 +482,14 @@ function SpawnSingleLazer()
             -- Set plane weapon
             SetCurrentPedVehicleWeapon(pilot, GetHashKey("VEHICLE_WEAPON_PLANE_ROCKET"))
             
+            -- Create blip for the jet
+            local blip = CreateVehicleBlip(lazer, 424, 1, "Military Lazer Jet")
+            
             -- Store unit
             local unitData = {
                 vehicle = lazer,
                 pilot = pilot,
+                blip = blip,
                 spawnTime = GetGameTimer(),
                 markedForCleanup = false
             }
@@ -500,7 +517,7 @@ function LazerAILoop(unitData)
             break
         end
         
-        -- Find nearest target
+        -- Find nearest target (players only)
         local pilotCoords = GetEntityCoords(pilot)
         local nearestTarget = nil
         local nearestDist = 2000.0
@@ -516,24 +533,6 @@ function LazerAILoop(unitData)
                 end
             end
         end
-        
-        -- Check nearby NPCs
-        local handle, ped = FindFirstPed()
-        local success = true
-        repeat
-            if DoesEntityExist(ped) and not IsPedDeadOrDying(ped, true) and ped ~= pilot then
-                local pedGroup = GetPedRelationshipGroupHash(ped)
-                if pedGroup ~= relationshipGroup then
-                    local dist = #(pilotCoords - GetEntityCoords(ped))
-                    if dist < nearestDist and dist < 1000.0 then
-                        nearestTarget = ped
-                        nearestDist = dist
-                    end
-                end
-            end
-            success, ped = FindNextPed(handle)
-        until not success
-        EndFindPed(handle)
         
         -- Chase and attack target
         if nearestTarget then
@@ -592,6 +591,11 @@ function CleanupUnit(unitData, isRhino)
             DeleteEntity(unitData.pilot)
         end
         
+        -- Remove blip
+        if unitData.blip and DoesBlipExist(unitData.blip) then
+            RemoveBlip(unitData.blip)
+        end
+        
         -- Delete vehicle (only after cleanup time for rhino)
         if unitData.vehicle and DoesEntityExist(unitData.vehicle) then
             DeleteEntity(unitData.vehicle)
@@ -629,20 +633,20 @@ Citizen.CreateThread(function()
                     
                     if shouldCleanup then
                         CleanupUnit(unit, false)
-                        -- Respawn
-                        local index = i
-                        Citizen.CreateThread(function()
-                            Citizen.Wait(Config.CLEANUP_TIME)
-                            local newUnit = SpawnVehicleWithPeds(Config.CRUSADER_MODEL, 2, {"WEAPON_MUSKET", "WEAPON_MARKSMANRIFLE"}, 150.0)
-                            if newUnit then
-                                unitTypes.level1_crusaders[index] = {
-                                    vehicle = newUnit.vehicle,
-                                    peds = newUnit.peds,
-                                    spawnTime = GetGameTimer(),
-                                    markedForCleanup = false
-                                }
-                            end
-                        end)
+                        -- Respawn immediately (cleanup happens in background)
+                        local newUnit = SpawnVehicleWithPeds(Config.CRUSADER_MODEL, 2, {"WEAPON_MUSKET", "WEAPON_MARKSMANRIFLE"}, 150.0)
+                        if newUnit then
+                            -- Create blip for the respawned vehicle
+                            local blip = CreateVehicleBlip(newUnit.vehicle, 225, 1, "Military Crusader")
+                            
+                            unitTypes.level1_crusaders[i] = {
+                                vehicle = newUnit.vehicle,
+                                peds = newUnit.peds,
+                                blip = blip,
+                                spawnTime = GetGameTimer(),
+                                markedForCleanup = false
+                            }
+                        end
                     end
                 end
             end
@@ -672,20 +676,20 @@ Citizen.CreateThread(function()
                     
                     if shouldCleanup then
                         CleanupUnit(unit, false)
-                        -- Respawn
-                        local index = i
-                        Citizen.CreateThread(function()
-                            Citizen.Wait(Config.CLEANUP_TIME)
-                            local newUnit = SpawnVehicleWithPeds(Config.BARRACKS_MODEL, 4, "WEAPON_MUSKET", 150.0)
-                            if newUnit then
-                                unitTypes.level2_barracks[index] = {
-                                    vehicle = newUnit.vehicle,
-                                    peds = newUnit.peds,
-                                    spawnTime = GetGameTimer(),
-                                    markedForCleanup = false
-                                }
-                            end
-                        end)
+                        -- Respawn immediately (cleanup happens in background)
+                        local newUnit = SpawnVehicleWithPeds(Config.BARRACKS_MODEL, 4, "WEAPON_MUSKET", 150.0)
+                        if newUnit then
+                            -- Create blip for the respawned vehicle
+                            local blip = CreateVehicleBlip(newUnit.vehicle, 225, 1, "Military Barracks")
+                            
+                            unitTypes.level2_barracks[i] = {
+                                vehicle = newUnit.vehicle,
+                                peds = newUnit.peds,
+                                blip = blip,
+                                spawnTime = GetGameTimer(),
+                                markedForCleanup = false
+                            }
+                        end
                     end
                 end
             end
@@ -737,18 +741,10 @@ Citizen.CreateThread(function()
                     
                     if shouldCleanup then
                         CleanupUnit(unit, false)
-                        -- Respawn a single Lazer
-                        Citizen.CreateThread(function()
-                            Citizen.Wait(Config.CLEANUP_TIME)
-                            SpawnSingleLazer()
-                            -- Remove old entry from table
-                            for j = #unitTypes.level4_lazers, 1, -1 do
-                                if unitTypes.level4_lazers[j] == unit then
-                                    table.remove(unitTypes.level4_lazers, j)
-                                    break
-                                end
-                            end
-                        end)
+                        -- Respawn immediately (cleanup happens in background)
+                        SpawnSingleLazer()
+                        -- Remove old entry from table
+                        table.remove(unitTypes.level4_lazers, i)
                     end
                 end
             end

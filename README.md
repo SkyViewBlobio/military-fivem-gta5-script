@@ -5,11 +5,12 @@ A comprehensive level-based military wave system for FiveM servers running OneSy
 ## Features
 
 - **Level-Based System**: Progressive difficulty with increasingly powerful enemy waves (4 levels currently implemented, supports up to 10)
-- **Intelligent AI**: Enemy units actively hunt players and NPCs with advanced combat behavior
+- **Intelligent AI**: Enemy units actively hunt **players only** with advanced combat behavior
+- **Map Blips**: All military units are marked on the map with red blips for easy tracking
 - **Vehicle Combat**: Tanks and jets with functional weapons and chase AI
-- **Automatic Respawning**: Units respawn after being destroyed (1 minute for most, 5 minutes for tanks)
+- **Instant Respawning**: Standard units (Levels 1, 2, 4) respawn immediately after destruction (Rhino tank respawns after 5 minutes)
 - **Multi-player Support**: Set levels for yourself or other players
-- **Custom Relationship Groups**: Military units fight everyone except each other
+- **Custom Relationship Groups**: Military units fight players and are friendly to each other
 
 ## Installation
 
@@ -72,19 +73,25 @@ Example: `/level John 5` - Sets John's level to 5
 ### Relationship Groups
 Military units use a custom relationship group (`MILITARY_ENEMY`) that:
 - Is hostile to all players
-- Is hostile to all NPCs (civilians, gangs, police, etc.)
 - Is friendly to other military units
 - Prevents friendly fire between spawned units
 
+### Blips
+All military units are marked on the map with red blips:
+- **Crusaders** (Level 1): Red vehicle blips labeled "Military Crusader"
+- **Barracks** (Level 2): Red vehicle blips labeled "Military Barracks"
+- **Rhino Tank** (Level 3): Red vehicle blip labeled "Military Rhino Tank"
+- **Lazer Jets** (Level 4): Red jet blips labeled "Military Lazer Jet"
+
 ### Respawn System
-- **Standard Units** (Levels 1, 2, 4): Respawn 1 minute after death/destruction
+- **Standard Units** (Levels 1, 2, 4): Respawn immediately after death/destruction
 - **Rhino Tank** (Level 3): Respawns 5 minutes after death/destruction
-- Wreckage is removed after cleanup timer expires
+- Wreckage and dead bodies are removed after cleanup timer (1 minute for standard units, 5 minutes for Rhino)
 - Units automatically respawn to maintain threat level
 
 ### AI Behavior
-- Units actively seek and engage players within range
-- Units also attack nearby NPCs (except other military units)
+- Units actively seek and engage **players only** within range
+- Units **ignore NPCs** (civilians, gangs, police, etc.)
 - Tank uses vehicle chase AI and cannon weapons
 - Jets use plane mission AI with rockets and strafing runs
 - All units have enhanced combat attributes and accuracy
