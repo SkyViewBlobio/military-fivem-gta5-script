@@ -57,14 +57,14 @@ Example: `/level John 5` - Sets John's level to 5
   - 2000 HP, heavy armor
   - Armed with Gusenberg Sweeper
 - Spawns 1000m away from player
-- Uses tank cannon in combat
+- Uses tank cannon in combat (fires once every 15 seconds)
 - Actively chases targets
 - **Special**: 5-minute respawn timer (instead of 1 minute)
 
 ### Level 4: Air Superiority
 - **2 Lazer Fighter Jets**
 - Pilot (s_m_m_chemsec_01)
-- Armed with rockets and cannons
+- Armed with rockets and cannons (fires once every 15 seconds)
 - Advanced aerial combat AI
 - Hunts from the sky
 
@@ -108,6 +108,22 @@ All military units are marked on the map with red blips:
 - OneSync Infinity enabled
 - GTA V game build (all standard vehicles and peds included)
 
+## Configuration
+
+You can customize various settings in `client.lua` by modifying the `Config` table:
+
+### Shooting Cooldowns
+- `RHINO_SHOOT_COOLDOWN` (default: 15000ms) - Time between Rhino tank shots
+- `LAZER_SHOOT_COOLDOWN` (default: 15000ms) - Time between Lazer jet shots
+
+### Respawn Settings
+- `CLEANUP_TIME` (default: 60000ms) - Cleanup time for destroyed standard units
+- `RHINO_CLEANUP_TIME` (default: 300000ms) - Cleanup and respawn time for Rhino tank
+- `RESPAWN_CHECK_INTERVAL` (default: 5000ms) - How often to check for destroyed units
+
+### Spawn Settings
+- `RHINO_SPAWN_DISTANCE` (default: 1000.0) - Distance from player where Rhino spawns
+
 ## Troubleshooting
 
 **Units not spawning?**
@@ -122,6 +138,7 @@ All military units are marked on the map with red blips:
 **Performance issues?**
 - Lower the active level
 - Consider reducing respawn frequency in `client.lua` (Config.RESPAWN_CHECK_INTERVAL)
+- Increase shooting cooldowns in `client.lua` (Config.RHINO_SHOOT_COOLDOWN and Config.LAZER_SHOOT_COOLDOWN)
 
 ## Credits
 
