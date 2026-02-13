@@ -21,6 +21,10 @@ local Config = {
     
     RESPAWN_CHECK_INTERVAL = 5000, -- Check every 5 seconds
     LAZER_FALLBACK_FIRE_CHANCE = 0.3, -- 30% chance to use bullet fallback when vehicle weapons may not be working
+    
+    -- Shooting cooldown timers (in milliseconds)
+    RHINO_SHOOT_COOLDOWN = 15000, -- 15 seconds between tank shots
+    LAZER_SHOOT_COOLDOWN = 15000, -- 15 seconds between jet shots
 }
 
 -- Unit tracking structure
@@ -374,7 +378,8 @@ function SpawnLevel3()
             blip = blip,
             spawnTime = GetGameTimer(),
             markedForCleanup = false,
-            isRespawning = false
+            isRespawning = false,
+            lastShotTime = 0 -- Track last shot time for cooldown
         }
         table.insert(unitTypes.level3_rhino, unitData)
         
@@ -417,9 +422,13 @@ function RhinoAILoop(unitData)
             -- Make tank chase
             TaskVehicleChase(driver, nearestTarget)
             
-            -- Shoot at target
-            local targetCoords = GetEntityCoords(nearestTarget)
-            SetVehicleShootAtTarget(driver, nearestTarget, targetCoords.x, targetCoords.y, targetCoords.z)
+            -- Shoot at target only if cooldown has elapsed
+            local currentTime = GetGameTimer()
+            if currentTime - unitData.lastShotTime >= Config.RHINO_SHOOT_COOLDOWN then
+                local targetCoords = GetEntityCoords(nearestTarget)
+                SetVehicleShootAtTarget(driver, nearestTarget, targetCoords.x, targetCoords.y, targetCoords.z)
+                unitData.lastShotTime = currentTime
+            end
         else
             -- Wander if no target
             TaskVehicleDriveWander(driver, vehicle, 30.0, 786603)
@@ -491,7 +500,8 @@ function SpawnSingleLazer()
                 pilot = pilot,
                 blip = blip,
                 spawnTime = GetGameTimer(),
-                markedForCleanup = false
+                markedForCleanup = false,
+                lastShotTime = 0 -- Track last shot time for cooldown
             }
             table.insert(unitTypes.level4_lazers, unitData)
             
@@ -539,18 +549,23 @@ function LazerAILoop(unitData)
             -- Use plane mission to chase
             TaskPlaneMission(pilot, vehicle, 0, nearestTarget, 0, 0, 0, 6, 100.0, 50.0, 90.0)
             
-            -- Shoot at target
-            local targetCoords = GetEntityCoords(nearestTarget)
-            SetVehicleShootAtTarget(pilot, nearestTarget, targetCoords.x, targetCoords.y, targetCoords.z)
-            
-            -- Fallback: Use bullets if vehicle weapons fail
-            if math.random() < Config.LAZER_FALLBACK_FIRE_CHANCE then
-                local lazerCoords = GetEntityCoords(vehicle)
-                ShootSingleBulletBetweenCoords(
-                    lazerCoords.x, lazerCoords.y, lazerCoords.z,
-                    targetCoords.x, targetCoords.y, targetCoords.z,
-                    100, true, GetHashKey("WEAPON_VEHICLE_ROCKET"), pilot, true, false, 1000.0
-                )
+            -- Shoot at target only if cooldown has elapsed
+            local currentTime = GetGameTimer()
+            if currentTime - unitData.lastShotTime >= Config.LAZER_SHOOT_COOLDOWN then
+                local targetCoords = GetEntityCoords(nearestTarget)
+                SetVehicleShootAtTarget(pilot, nearestTarget, targetCoords.x, targetCoords.y, targetCoords.z)
+                
+                -- Fallback: Use bullets if vehicle weapons fail
+                if math.random() < Config.LAZER_FALLBACK_FIRE_CHANCE then
+                    local lazerCoords = GetEntityCoords(vehicle)
+                    ShootSingleBulletBetweenCoords(
+                        lazerCoords.x, lazerCoords.y, lazerCoords.z,
+                        targetCoords.x, targetCoords.y, targetCoords.z,
+                        100, true, GetHashKey("WEAPON_VEHICLE_ROCKET"), pilot, true, false, 1000.0
+                    )
+                end
+                
+                unitData.lastShotTime = currentTime
             end
         else
             -- Fly around
